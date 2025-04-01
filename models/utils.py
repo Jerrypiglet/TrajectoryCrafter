@@ -222,7 +222,10 @@ class Warper:
         intrinsic2: Optional[torch.Tensor],
         mask=False,
         twice=False,
+        is_image=False,
+        if_debug=False,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        
         """
         Given a frame1 and global transformations transformation1 and transformation2, warps frame1 to next view using
         bilinear splatting.
@@ -238,7 +241,7 @@ class Warper:
         :param intrinsic2: (b, 3, 3) camera intrinsic matrix. Optional
         """
         if self.resolution is not None:
-            assert frame1.shape[2:4] == self.resolution
+            assert frame1.shape[2:4] == self.resolution, f"frame1 shape: {frame1.shape[2:4]}, resolution: {self.resolution}"
         b, c, h, w = frame1.shape
         if mask1 is None:
             mask1 = torch.ones(size=(b, 1, h, w)).to(frame1)
@@ -268,11 +271,14 @@ class Warper:
             trans_points1[:, :, :, :2, 0] / trans_points1[:, :, :, 2:3, 0]
         )
         trans_depth1 = trans_points1[:, :, :, 2, 0]
+        
+        mask1 = torch.logical_and(mask1, trans_depth1[None] > 0.)
+        
         grid = self.create_grid(b, h, w).to(trans_coordinates)
         flow12 = trans_coordinates.permute(0, 3, 1, 2) - grid
         if not twice:
             warped_frame2, mask2 = self.bilinear_splatting(
-                frame1, mask1, trans_depth1, flow12, None, is_image=True
+                frame1, mask1, trans_depth1, flow12, None, is_image=is_image
             )
             if mask:
                 warped_frame2, mask2 = self.clean_points(warped_frame2, mask2)
@@ -280,7 +286,7 @@ class Warper:
 
         else:
             warped_frame2, mask2 = self.bilinear_splatting(
-                frame1, mask1, trans_depth1, flow12, None, is_image=True
+                frame1, mask1, trans_depth1, flow12, None, is_image=is_image
             )
             # warped_frame2, mask2 = self.clean_points(warped_frame2, mask2)
             warped_flow, _ = self.bilinear_splatting(
@@ -292,7 +298,7 @@ class Warper:
                 depth1.squeeze(1),
                 -warped_flow,
                 None,
-                is_image=True,
+                is_image=is_image,
             )
             return twice_warped_frame1, warped_frame2, None, None
 
